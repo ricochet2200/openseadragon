@@ -126,15 +126,13 @@
   *     The element to append the viewer's container element to. If not provided, the 'id' property must be provided.
   *     If both the element and id properties are specified, the viewer is appended to the element provided in the element property.
   *
-  * @property {Array|String|Function|Object[]|Array[]|String[]|Function[]} [tileSources=null]
-  *     As an Array, the tileSource can hold either Objects or mixed
-  *     types of Arrays of Objects, Strings, or Functions. When a value is a String,
-  *     the tileSource is used to create a {@link OpenSeadragon.DziTileSource}.
-  *     When a value is a Function, the function is used to create a new
-  *     {@link OpenSeadragon.TileSource} whose abstract method
-  *     getUrl( level, x, y ) is implemented by the function. Finally, when it
-  *     is an Array of objects, it is used to create a
-  *     {@link OpenSeadragon.LegacyTileSource}.
+  * @property {Array|String|Function|Object} [tileSources=null]
+  *     Tile source(s) to open initially. This is a complex parameter; see
+  *     {@link OpenSeadragon.Viewer#open} for details.
+  *
+  * @property {Number} [tabIndex=0]
+  *     Tabbing order index to assign to the viewer element. Positive values are selected in increasing order. When tabIndex is 0
+  *     source order is used. A negative value omits the viewer from the tabbing order.
   *
   * @property {Array} overlays Array of objects defining permanent overlays of
   *     the viewer. The overlays added via this option and later removed with
@@ -177,9 +175,6 @@
   *     these paths, prefer setting the option.prefixUrl rather than overriding
   *     every image path directly through this setting.
   *
-  * @property {Object} [tileHost=null]
-  *     TODO: Implement this. Currently not used.
-  *
   * @property {Boolean} [debugMode=false]
   *     TODO: provide an in-screen panel providing event detail feedback.
   *
@@ -209,10 +204,12 @@
   *     If 0, adjusts to fit viewer.
   *
   * @property {Number} [opacity=1]
-  *     Opacity of the drawer (1=opaque, 0=transparent)
+  *     Default opacity of the tiled images (1=opaque, 0=transparent)
   *
-  * @property {Number} [layersAspectRatioEpsilon=0.0001]
-  *     Maximum aspectRatio mismatch between 2 layers.
+  * @property {String|CanvasGradient|CanvasPattern|Function} [placeholderFillStyle=null]
+  *     Draws a colored rectangle behind the tile if it is not loaded yet.
+  *     You can pass a CSS color value like "#FF8800".
+  *     When passing a function the tiledImage and canvas context are available as argument which is useful when you draw a gradient or pattern.
   *
   * @property {Number} [degrees=0]
   *     Initial rotation.
@@ -261,12 +258,16 @@
   * @property {Number} [visibilityRatio=0.5]
   *     The percentage ( as a number from 0 to 1 ) of the source image which
   *     must be kept within the viewport.  If the image is dragged beyond that
-  *     limit, it will 'bounce' back until the minimum visibility ration is
+  *     limit, it will 'bounce' back until the minimum visibility ratio is
   *     achieved.  Setting this to 0 and wrapHorizontal ( or wrapVertical ) to
   *     true will provide the effect of an infinitely scrolling viewport.
   *
+  * @property {Object} [viewportMargins={}]
+  *     Pushes the "home" region in from the sides by the specified amounts.
+  *     Possible subproperties (Numbers, in screen coordinates): left, top, right, bottom.
+  *
   * @property {Number} [imageLoaderLimit=0]
-  *     The maximum number of image requests to make concurrently.  By default
+  *     The maximum number of image requests to make concurrently. By default
   *     it is set to 0 allowing the browser to make the maximum number of
   *     image requests in parallel as allowed by the browsers policy.
   *
@@ -451,8 +452,8 @@
   *     this setting when set to false.
   *
   * @property {Boolean} [showSequenceControl=true]
-  *     If the viewer has been configured with a sequence of tile sources, then
-  *     provide buttons for navigating forward and backward through the images.
+  *     If sequenceMode is true, then provide buttons for navigating forward and
+  *     backward through the images.
   *
   * @property {OpenSeadragon.ControlAnchor} [sequenceControlAnchor=TOP_LEFT]
   *     Placement of the default sequence controls.
@@ -510,18 +511,31 @@
   *     To only change the button images, consider using
   *     {@link OpenSeadragon.Options.navImages}
   *
+  * @property {Boolean} [sequenceMode=false]
+  *     Set to true to have the viewer treat your tilesources as a sequence of images to
+  *     be opened one at a time rather than all at once.
+  *
   * @property {Number} [initialPage=0]
-  *     If the viewer has been configured with a sequence of tile sources, display this page initially.
+  *     If sequenceMode is true, display this page initially.
   *
   * @property {Boolean} [preserveViewport=false]
-  *     If the viewer has been configured with a sequence of tile sources, then
-  *     normally navigating to through each image resets the viewport to 'home'
-  *     position.  If preserveViewport is set to true, then the viewport position
-  *     is preserved when navigating between images in the sequence.
+  *     If sequenceMode is true, then normally navigating through each image resets the
+  *     viewport to 'home' position.  If preserveViewport is set to true, then the viewport
+  *     position is preserved when navigating between images in the sequence.
+  *
+  * @property {Boolean} [preserveOverlays=false]
+  *     If sequenceMode is true, then normally navigating through each image
+  *     resets the overlays.
+  *     If preserveOverlays is set to true, then the overlays added with {@link OpenSeadragon.Viewer#addOverlay}
+  *     are preserved when navigating between images in the sequence.
+  *     Note: setting preserveOverlays overrides any overlays specified in the global
+  *     "overlays" option for the Viewer. It's also not compatible with specifying
+  *     per-tileSource overlays via the options, as those overlays will persist
+  *     even after the tileSource is closed.
   *
   * @property {Boolean} [showReferenceStrip=false]
-  *     If the viewer has been configured with a sequence of tile sources, then
-  *     display a scrolling strip of image thumbnails for navigating through the images.
+  *     If sequenceMode is true, then display a scrolling strip of image thumbnails for
+  *     navigating through the images.
   *
   * @property {String} [referenceStripScroll='horizontal']
   *
@@ -536,16 +550,29 @@
   * @property {Number} [referenceStripSizeRatio=0.2]
   *
   * @property {Boolean} [collectionMode=false]
+  *     Set to true to have the viewer arrange your TiledImages in a grid or line.
   *
   * @property {Number} [collectionRows=3]
+  *     If collectionMode is true, specifies how many rows the grid should have. Use 1 to make a line.
+  *     If collectionLayout is 'vertical', specifies how many columns instead.
   *
   * @property {String} [collectionLayout='horizontal']
+  *     If collectionMode is true, specifies whether to arrange vertically or horizontally.
   *
   * @property {Number} [collectionTileSize=800]
+  *     If collectionMode is true, specifies the size, in viewport coordinates, for each TiledImage to fit into.
+  *     The TiledImage will be centered within a square of the specified size.
+  *
+  * @property {Number} [collectionTileMargin=80]
+  *     If collectionMode is true, specifies the margin, in viewport coordinates, between each TiledImage.
   *
   * @property {String|Boolean} [crossOriginPolicy=false]
-  *      Valid values are 'Anonymous', 'use-credentials', and false. If false, canvas requests will
-  *      not use CORS, and the canvas will be tainted.
+  *     Valid values are 'Anonymous', 'use-credentials', and false. If false, canvas requests will
+  *     not use CORS, and the canvas will be tainted.
+  *
+  * @property {Boolean} [ajaxWithCredentials=false]
+  *     Whether to set the withCredentials XHR flag for AJAX requests (when loading tile sources).
+  *     Note that this can be overridden at the {@link OpenSeadragon.TileSource} level.
   *
   */
 
@@ -797,6 +824,25 @@ window.OpenSeadragon = window.OpenSeadragon || function( options ){
                     canvasElement.getContext( '2d' ) );
     }());
 
+    /**
+     * A ratio comparing the device screen's pixel density to the canvas's backing store pixel density. Defaults to 1 if canvas isn't supported by the browser.
+     * @member {Number} pixelDensityRatio
+     * @memberof OpenSeadragon
+     */
+    $.pixelDensityRatio = (function () {
+        if ( $.supportsCanvas ) {
+            var context = document.createElement('canvas').getContext('2d');
+            var devicePixelRatio = window.devicePixelRatio || 1;
+            var backingStoreRatio = context.webkitBackingStorePixelRatio ||
+                                    context.mozBackingStorePixelRatio ||
+                                    context.msBackingStorePixelRatio ||
+                                    context.oBackingStorePixelRatio ||
+                                    context.backingStorePixelRatio || 1;
+            return devicePixelRatio / backingStoreRatio;
+        } else {
+            return 1;
+        }
+    }());
 
 }( OpenSeadragon ));
 
@@ -904,6 +950,7 @@ window.OpenSeadragon = window.OpenSeadragon || function( options ){
             tileHost:               null,
             initialPage:            0,
             crossOriginPolicy:      false,
+            ajaxWithCredentials:    false,
 
             //PAN AND ZOOM SETTINGS AND CONSTRAINTS
             panHorizontal:          true,
@@ -945,6 +992,7 @@ window.OpenSeadragon = window.OpenSeadragon || function( options ){
             showSequenceControl:     true,  //SEQUENCE
             sequenceControlAnchor:   null,  //SEQUENCE
             preserveViewport:        false, //SEQUENCE
+            preserveOverlays:        false, //SEQUENCE
             navPrevNextWrap:         false, //SEQUENCE
             showNavigationControl:   true,  //ZOOM/HOME/FULL/ROTATION
             navigationControlAnchor: null,  //ZOOM/HOME/FULL/ROTATION
@@ -970,13 +1018,11 @@ window.OpenSeadragon = window.OpenSeadragon || function( options ){
             navigatorRotate:            true,
 
             // INITIAL ROTATION
-            degrees:                0,
+            degrees:                    0,
 
             // APPEARANCE
-            opacity:                1,
-
-            // LAYERS SETTINGS
-            layersAspectRatioEpsilon:   0.0001,
+            opacity:                    1,
+            placeholderFillStyle:       null,
 
             //REFERENCE STRIP SETTINGS
             showReferenceStrip:          false,
@@ -992,6 +1038,7 @@ window.OpenSeadragon = window.OpenSeadragon || function( options ){
             collectionLayout:       'horizontal', //vertical
             collectionMode:         false,
             collectionTileSize:     800,
+            collectionTileMargin:   80,
 
             //PERFORMANCE SETTINGS
             imageLoaderLimit:       0,
@@ -1911,13 +1958,25 @@ window.OpenSeadragon = window.OpenSeadragon || function( options ){
 
         /**
          * Makes an AJAX request.
-         * @function
-         * @param {String} url - the url to request
-         * @param {Function} onSuccess - a function to call on a successful response
-         * @param {Function} onError - a function to call on when an error occurs
+         * @param {Object} options
+         * @param {String} options.url - the url to request
+         * @param {Function} options.success - a function to call on a successful response
+         * @param {Function} options.error - a function to call on when an error occurs
+         * @param {Boolean} [options.withCredentials=false] - whether to set the XHR's withCredentials
          * @throws {Error}
          */
         makeAjaxRequest: function( url, onSuccess, onError ) {
+            var withCredentials;
+
+            // Note that our preferred API is that you pass in a single object; the named
+            // arguments are for legacy support.
+            if( $.isPlainObject( url ) ){
+                onSuccess = url.success;
+                onError = url.error;
+                withCredentials = url.withCredentials;
+                url = url.url;
+            }
+
             var protocol = $.getUrlProtocol( url );
             var request = $.createAjaxRequest( protocol === "file:" );
 
@@ -1930,9 +1989,12 @@ window.OpenSeadragon = window.OpenSeadragon || function( options ){
                 if ( request.readyState == 4 ) {
                     request.onreadystatechange = function(){};
 
-                    var successStatus =
-                        protocol === "http:" || protocol === "https:" ? 200 : 0;
-                    if ( request.status === successStatus ) {
+                    // With protocols other than http/https, the status is 200
+                    // on Firefox and 0 on other browsers
+                    if ( request.status === 200 ||
+                        ( request.status === 0 &&
+                          protocol !== "http:" &&
+                          protocol !== "https:" )) {
                         onSuccess( request );
                     } else {
                         $.console.log( "AJAX request returned %d: %s", request.status, url );
@@ -1943,6 +2005,10 @@ window.OpenSeadragon = window.OpenSeadragon || function( options ){
                     }
                 }
             };
+
+            if (withCredentials) {
+                request.withCredentials = true;
+            }
 
             try {
                 request.open( "GET", url, true );
@@ -2258,7 +2324,8 @@ window.OpenSeadragon = window.OpenSeadragon || function( options ){
         debug:  nullfunction,
         info:   nullfunction,
         warn:   nullfunction,
-        error:  nullfunction
+        error:  nullfunction,
+        assert: nullfunction
     };
 
 

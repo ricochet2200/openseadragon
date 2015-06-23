@@ -68,7 +68,7 @@ $.ButtonGroup = function( options ) {
      */
     this.element = options.element || $.makeNeutralElement( "div" );
 
-    // TODO What if there IS an options.group specified? 
+    // TODO What if there IS an options.group specified?
     if( !options.group ){
         this.label   = $.makeNeutralElement( "label" );
         //TODO: support labels for ButtonGroups
@@ -105,23 +105,7 @@ $.ButtonGroup = function( options ) {
                 }
             }
         },
-        pressHandler: function ( event ) {
-            if ( event.pointerType === 'touch' && !$.MouseTracker.haveTouchEnter ) {
-                var i;
-                for ( i = 0; i < _this.buttons.length; i++ ) {
-                    _this.buttons[ i ].notifyGroupEnter();
-                }
-            }
-        },
-        releaseHandler: function ( event ) {
-            var i;
-            if ( !event.insideElementReleased || ( event.pointerType === 'touch' && !$.MouseTracker.haveTouchEnter ) ) {
-                for ( i = 0; i < _this.buttons.length; i++ ) {
-                    _this.buttons[ i ].notifyGroupExit();
-                }
-            }
-        }
-    }).setTracking( true );
+    });
 };
 
 $.ButtonGroup.prototype = /** @lends OpenSeadragon.ButtonGroup.prototype */{

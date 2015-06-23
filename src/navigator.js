@@ -52,8 +52,7 @@ $.Navigator = function( options ){
     var viewer      = options.viewer,
         _this = this,
         viewerSize,
-        navigatorSize,
-        unneededElement;
+        navigatorSize;
 
     //We may need to create a new element and id if they did not
     //provide the id for the existing element
@@ -83,7 +82,7 @@ $.Navigator = function( options ){
                options.controlOptions.width = options.width;
             }
         }
-        
+
     } else {
         this.element            = document.getElementById( options.id );
         options.controlOptions  = {
@@ -99,6 +98,7 @@ $.Navigator = function( options ){
         sizeRatio:     $.DEFAULT_SETTINGS.navigatorSizeRatio
     }, options, {
         element:                this.element,
+        tabIndex:               -1, // No keyboard navigation, omit from tab order
         //These need to be overridden to prevent recursion since
         //the navigator is a viewer and a viewer has a navigator
         showNavigator:          false,
@@ -168,30 +168,15 @@ $.Navigator = function( options ){
     this.displayRegionContainer.style.width = "100%";
     this.displayRegionContainer.style.height = "100%";
 
-    this.element.innerTracker = new $.MouseTracker({
-        element:         this.element,
-        dragHandler:     $.delegate( this, onCanvasDrag ),
-        clickHandler:    $.delegate( this, onCanvasClick ),
-        releaseHandler:  $.delegate( this, onCanvasRelease ),
-        scrollHandler:   $.delegate( this, onCanvasScroll )
-    }).setTracking( true );
-
-    /*this.displayRegion.outerTracker = new $.MouseTracker({
-        element:            this.container,
-        clickTimeThreshold: this.clickTimeThreshold,
-        clickDistThreshold: this.clickDistThreshold,
-        enterHandler:       $.delegate( this, onContainerEnter ),
-        exitHandler:        $.delegate( this, onContainerExit ),
-        releaseHandler:     $.delegate( this, onContainerRelease )
-    }).setTracking( this.mouseNavEnabled ? true : false ); // always tracking*/
-
-
     viewer.addControl(
         this.element,
         options.controlOptions
     );
 
-    if ( options.controlOptions.anchor != $.ControlAnchor.ABSOLUTE && options.controlOptions.anchor != $.ControlAnchor.NONE ) {
+    this._resizeWithViewer = options.controlOptions.anchor != $.ControlAnchor.ABSOLUTE &&
+        options.controlOptions.anchor != $.ControlAnchor.NONE;
+
+    if ( this._resizeWithViewer ) {
         if ( options.width && options.height ) {
             this.element.style.height = typeof ( options.height )  == "number" ? ( options.height + 'px' ) : options.height;
             this.element.style.width  = typeof ( options.width )  == "number" ? ( options.width + 'px' ) : options.width;
@@ -211,26 +196,57 @@ $.Navigator = function( options ){
 
     this.displayRegionContainer.appendChild(this.displayRegion);
     this.element.getElementsByTagName('div')[0].appendChild(this.displayRegionContainer);
-    unneededElement = this.element.getElementsByTagName('textarea')[0];
-    if (unneededElement) {
-        unneededElement.parentNode.removeChild(unneededElement);
-    }
 
-    if (options.navigatorRotate)
-    {
+    if (options.navigatorRotate) {
         options.viewer.addHandler("rotate", function (args) {
             _setTransformRotate(_this.displayRegionContainer, args.degrees);
             _setTransformRotate(_this.displayRegion, -args.degrees);
             _this.viewport.setRotation(args.degrees);
         });
-
     }
+
+    // Remove the base class' (Viewer's) innerTracker and replace it with our own
+    this.innerTracker.destroy();
+    this.innerTracker = new $.MouseTracker({
+        element:         this.element,
+        dragHandler:     $.delegate( this, onCanvasDrag ),
+        clickHandler:    $.delegate( this, onCanvasClick ),
+        releaseHandler:  $.delegate( this, onCanvasRelease ),
+        scrollHandler:   $.delegate( this, onCanvasScroll )
+    });
+
+    this.addHandler("reset-size", function() {
+        if (_this.viewport) {
+            _this.viewport.goHome(true);
+        }
+    });
+
+    this.addHandler("reset-size", function() {
+        if (_this.viewport) {
+            _this.viewport.goHome(true);
+        }
+    });
+
+    viewer.world.addHandler("item-index-change", function(event) {
+        var item = _this.world.getItemAt(event.previousIndex);
+        _this.world.setItemIndex(item, event.newIndex);
+    });
+
+    viewer.world.addHandler("remove-item", function(event) {
+        var theirItem = event.item;
+        var myItem = _this._getMatchingItem(theirItem);
+        if (myItem) {
+            _this.world.removeItem(myItem);
+        }
+    });
+
+    this.update(viewer.viewport);
 };
 
 $.extend( $.Navigator.prototype, $.EventSource.prototype, $.Viewer.prototype, /** @lends OpenSeadragon.Navigator.prototype */{
 
     /**
-     * Used to notify the navigator when its size has changed. 
+     * Used to notify the navigator when its size has changed.
      * Especially useful when {@link OpenSeadragon.Options}.navigatorAutoResize is set to false and the navigator is resizable.
      * @function
      */
@@ -240,23 +256,13 @@ $.extend( $.Navigator.prototype, $.EventSource.prototype, $.Viewer.prototype, /*
                     (this.container.clientWidth === 0 ? 1 : this.container.clientWidth),
                     (this.container.clientHeight === 0 ? 1 : this.container.clientHeight)
                 );
+
             if ( !containerSize.equals( this.oldContainerSize ) ) {
-                var oldBounds = this.viewport.getBounds();
-                var oldCenter = this.viewport.getCenter();
                 this.viewport.resize( containerSize, true );
-                var imageHeight = 1 / this.source.aspectRatio;
-                var newWidth = oldBounds.width <= 1 ? oldBounds.width : 1;
-                var newHeight = oldBounds.height <= imageHeight ?
-                    oldBounds.height : imageHeight;
-                var newBounds = new $.Rect(
-                    oldCenter.x - ( newWidth / 2.0 ),
-                    oldCenter.y - ( newHeight / 2.0 ),
-                    newWidth,
-                    newHeight
-                    );
-                this.viewport.fitBounds( newBounds, true );
+                this.viewport.goHome(true);
                 this.oldContainerSize = containerSize;
-                this.drawer.update();
+                this.drawer.clear();
+                this.world.draw();
             }
         }
     },
@@ -276,55 +282,91 @@ $.extend( $.Navigator.prototype, $.EventSource.prototype, $.Viewer.prototype, /*
             bottomright;
 
         viewerSize = $.getElementSize( this.viewer.element );
-        if ( !viewerSize.equals( this.oldViewerSize ) ) {
+        if ( this._resizeWithViewer && viewerSize.x && viewerSize.y && !viewerSize.equals( this.oldViewerSize ) ) {
             this.oldViewerSize = viewerSize;
-            if ( this.maintainSizeRatio ) {
+
+            if ( this.maintainSizeRatio || !this.elementArea) {
                 newWidth  = viewerSize.x * this.sizeRatio;
                 newHeight = viewerSize.y * this.sizeRatio;
-            }
-            else {
+            } else {
                 newWidth = Math.sqrt(this.elementArea * (viewerSize.x / viewerSize.y));
                 newHeight = this.elementArea / newWidth;
             }
+
             this.element.style.width  = Math.round( newWidth ) + 'px';
             this.element.style.height = Math.round( newHeight ) + 'px';
+
+            if (!this.elementArea) {
+                this.elementArea = newWidth * newHeight;
+            }
+
             this.updateSize();
         }
 
         if( viewport && this.viewport ) {
             bounds      = viewport.getBounds( true );
             topleft     = this.viewport.pixelFromPoint( bounds.getTopLeft(), false );
-            bottomright = this.viewport.pixelFromPoint( bounds.getBottomRight(), false ).minus( this.totalBorderWidths );
+            bottomright = this.viewport.pixelFromPoint( bounds.getBottomRight(), false )
+                .minus( this.totalBorderWidths );
 
             //update style for navigator-box
-            (function(style) {
+            var style = this.displayRegion.style;
+            style.display = this.world.getItemCount() ? 'block' : 'none';
 
-                style.top    = Math.round( topleft.y ) + 'px';
-                style.left   = Math.round( topleft.x ) + 'px';
+            style.top    = Math.round( topleft.y ) + 'px';
+            style.left   = Math.round( topleft.x ) + 'px';
 
-                var width = Math.abs( topleft.x - bottomright.x );
-                var height = Math.abs( topleft.y - bottomright.y );
-                // make sure width and height are non-negative so IE doesn't throw
-                style.width  = Math.round( Math.max( width, 0 ) ) + 'px';
-                style.height = Math.round( Math.max( height, 0 ) ) + 'px';
-
-            }( this.displayRegion.style ));
+            var width = Math.abs( topleft.x - bottomright.x );
+            var height = Math.abs( topleft.y - bottomright.y );
+            // make sure width and height are non-negative so IE doesn't throw
+            style.width  = Math.round( Math.max( width, 0 ) ) + 'px';
+            style.height = Math.round( Math.max( height, 0 ) ) + 'px';
         }
 
     },
 
-    open: function( source ) {
-        this.updateSize();
-        var containerSize = this.viewer.viewport.containerSize.times( this.sizeRatio );
-        var ts = source.getTileSize(source.maxLevel);
-        if ( ts > containerSize.x || ts > containerSize.y ) {
-            this.minPixelRatio = Math.min( containerSize.x, containerSize.y ) / ts;
-        } else {
-            this.minPixelRatio = this.viewer.minPixelRatio;
-        }
-        return $.Viewer.prototype.open.apply( this, [ source ] );
-    }
+    // overrides Viewer.addTiledImage
+    addTiledImage: function(options) {
+        var _this = this;
 
+        var original = options.originalTiledImage;
+        delete options.original;
+
+        var optionsClone = $.extend({}, options, {
+            success: function(event) {
+                var myItem = event.item;
+                myItem._originalForNavigator = original;
+                _this._matchBounds(myItem, original, true);
+
+                original.addHandler('bounds-change', function() {
+                    _this._matchBounds(myItem, original);
+                });
+            }
+        });
+
+        return $.Viewer.prototype.addTiledImage.apply(this, [optionsClone]);
+    },
+
+    // private
+    _getMatchingItem: function(theirItem) {
+        var count = this.world.getItemCount();
+        var item;
+        for (var i = 0; i < count; i++) {
+            item = this.world.getItemAt(i);
+            if (item._originalForNavigator === theirItem) {
+                return item;
+            }
+        }
+
+        return null;
+    },
+
+    // private
+    _matchBounds: function(myItem, theirItem, immediately) {
+        var bounds = theirItem.getBounds();
+        myItem.setPosition(bounds.getTopLeft(), immediately);
+        myItem.setWidth(bounds.width, immediately);
+    }
 });
 
 /**

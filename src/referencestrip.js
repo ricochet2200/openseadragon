@@ -125,8 +125,9 @@ $.ReferenceStrip = function ( options ) {
         scrollHandler:  $.delegate( this, onStripScroll ),
         enterHandler:   $.delegate( this, onStripEnter ),
         exitHandler:    $.delegate( this, onStripExit ),
+        keyDownHandler: $.delegate( this, onKeyDown ),
         keyHandler:     $.delegate( this, onKeyPress )
-    } ).setTracking( true );
+    } );
 
     //Controls the position and orientation of the reference strip and sets the
     //appropriate width and height
@@ -214,7 +215,7 @@ $.ReferenceStrip = function ( options ) {
                     viewer.goToPage( page );
                 }
             }
-        } ).setTracking( true );
+        } );
 
         this.element.appendChild( element );
 
@@ -223,7 +224,7 @@ $.ReferenceStrip = function ( options ) {
         this.panels.push( element );
 
     }
-    loadPanels( this, this.scroll == 'vertical' ? viewerSize.y : viewerSize.y, 0 );
+    loadPanels( this, this.scroll == 'vertical' ? viewerSize.y : viewerSize.x, 0 );
     this.setFocus( 0 );
 
 };
@@ -289,6 +290,13 @@ $.extend( $.ReferenceStrip.prototype, $.EventSource.prototype, $.Viewer.prototyp
             return true;
         }
         return false;
+    },
+
+    // Overrides Viewer.destroy
+    destroy: function() {
+        if (this.element) {
+            this.element.parentNode.removeChild(this.element);
+        }
     }
 
 } );
@@ -446,8 +454,10 @@ function loadPanels( strip, viewerSize, scroll ) {
             style.width         = ( strip.panelWidth - 4 ) + 'px';
             style.height        = ( strip.panelHeight - 4 ) + 'px';
 
+            // TODO: What is this for? Future keyboard navigation support?
             miniViewer.displayRegion.innerTracker = new $.MouseTracker( {
-                element: miniViewer.displayRegion
+                element: miniViewer.displayRegion,
+                startDisabled: true
             } );
 
             element.getElementsByTagName( 'div' )[0].appendChild(
@@ -467,7 +477,7 @@ function loadPanels( strip, viewerSize, scroll ) {
  */
 function onStripEnter( event ) {
     var element = event.eventSource.element;
-    
+
     //$.setElementOpacity(element, 0.8);
 
     //element.style.border = '1px solid #555';
@@ -495,7 +505,7 @@ function onStripEnter( event ) {
  */
 function onStripExit( event ) {
     var element = event.eventSource.element;
-    
+
     if ( 'horizontal' == this.scroll ) {
 
         //element.style.paddingTop = "10px";
@@ -511,6 +521,37 @@ function onStripExit( event ) {
 }
 
 
+/**
+ * @private
+ * @inner
+ * @function
+ */
+function onKeyDown( event ) {
+    //console.log( event.keyCode );
+
+    if ( !event.preventDefaultAction && !event.ctrl && !event.alt && !event.meta ) {
+        switch ( event.keyCode ) {
+            case 38: //up arrow
+                onStripScroll.call( this, { eventSource: this.tracker, position: null, scroll: 1, shift: null } );
+                return false;
+            case 40: //down arrow
+                onStripScroll.call( this, { eventSource: this.tracker, position: null, scroll: -1, shift: null } );
+                return false;
+            case 37: //left arrow
+                onStripScroll.call( this, { eventSource: this.tracker, position: null, scroll: -1, shift: null } );
+                return false;
+            case 39: //right arrow
+                onStripScroll.call( this, { eventSource: this.tracker, position: null, scroll: 1, shift: null } );
+                return false;
+            default:
+                //console.log( 'navigator keycode %s', event.keyCode );
+                return true;
+        }
+    } else {
+        return true;
+    }
+}
+
 
 /**
  * @private
@@ -520,35 +561,35 @@ function onStripExit( event ) {
 function onKeyPress( event ) {
     //console.log( event.keyCode );
 
-    switch ( event.keyCode ) {
-        case 61: //=|+
-            onStripScroll.call( this, { eventSource: this.tracker, position: null, scroll: 1, shift: null } );
-            return false;
-        case 45: //-|_
-            onStripScroll.call( this, { eventSource: this.tracker, position: null, scroll: -1, shift: null } );
-            return false;
-        case 48: //0|)
-        case 119: //w
-        case 87: //W
-        case 38: //up arrow
-            onStripScroll.call( this, { eventSource: this.tracker, position: null, scroll: 1, shift: null } );
-            return false;
-        case 115: //s
-        case 83: //S
-        case 40: //down arrow
-            onStripScroll.call( this, { eventSource: this.tracker, position: null, scroll: -1, shift: null } );
-            return false;
-        case 97: //a
-        case 37: //left arrow
-            onStripScroll.call( this, { eventSource: this.tracker, position: null, scroll: -1, shift: null } );
-            return false;
-        case 100: //d
-        case 39: //right arrow
-            onStripScroll.call( this, { eventSource: this.tracker, position: null, scroll: 1, shift: null } );
-            return false;
-        default:
-            //console.log( 'navigator keycode %s', event.keyCode );
-            return true;
+    if ( !event.preventDefaultAction && !event.ctrl && !event.alt && !event.meta ) {
+        switch ( event.keyCode ) {
+            case 61: //=|+
+                onStripScroll.call( this, { eventSource: this.tracker, position: null, scroll: 1, shift: null } );
+                return false;
+            case 45: //-|_
+                onStripScroll.call( this, { eventSource: this.tracker, position: null, scroll: -1, shift: null } );
+                return false;
+            case 48: //0|)
+            case 119: //w
+            case 87: //W
+                onStripScroll.call( this, { eventSource: this.tracker, position: null, scroll: 1, shift: null } );
+                return false;
+            case 115: //s
+            case 83: //S
+                onStripScroll.call( this, { eventSource: this.tracker, position: null, scroll: -1, shift: null } );
+                return false;
+            case 97: //a
+                onStripScroll.call( this, { eventSource: this.tracker, position: null, scroll: -1, shift: null } );
+                return false;
+            case 100: //d
+                onStripScroll.call( this, { eventSource: this.tracker, position: null, scroll: 1, shift: null } );
+                return false;
+            default:
+                //console.log( 'navigator keycode %s', event.keyCode );
+                return true;
+        }
+    } else {
+        return true;
     }
 }
 
